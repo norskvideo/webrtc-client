@@ -1,5 +1,5 @@
 {
-  "name": "webrtc-client",
+  "name": "@norskvideo/webrtc-client",
   "version": "0.1.0",
   "description": "WHIP/WHEP/duplex WebRTC client for Norsk integration",
   "main": "lib/cjs/webrtc.js",
