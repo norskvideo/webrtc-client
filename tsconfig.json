@@ -1,0 +1,18 @@
+{
+  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "allowJs": true,
+    "baseUrl": "./",
+    "esModuleInterop": true,
+    "module": "ES2020",
+    "noImplicitAny": true,
+    "outDir": "./lib/esm",
+    "sourceRoot": "./src",
+    "sourceMap": true,
+    "strict": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "target": "es6",
+    "declaration": true,
+  }
+}
