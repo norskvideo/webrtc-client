@@ -6,7 +6,8 @@
   "types": "lib/esm/webrtc.d.ts",
   "module": "lib/esm/webrtc.js",
   "scripts": {
-    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.json",
+    "prepare": "npm run build"
   },
   "author": "Nicholas Wolverson <nicholas@id3as.co.uk>",
   "license": "MIT",
