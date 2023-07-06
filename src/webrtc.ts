@@ -1,5 +1,5 @@
 export type WebRtcClientConfig = {
-  url: string,
+  url: string | URL,
   iceServers?: RTCIceServer[]
 };
 interface WebRtcClientEventMap {
@@ -7,8 +7,8 @@ interface WebRtcClientEventMap {
 }
 export class WebRtcClient extends EventTarget {
   cachedCandidates: RTCIceCandidate[] = [];
-  endpointUrl: string;
-  sessionUrl: string | undefined;
+  endpointUrl: URL;
+  sessionUrl: URL | undefined;
   client: RTCPeerConnection;
 
   constructor(config: WebRtcClientConfig) {
@@ -23,7 +23,7 @@ export class WebRtcClient extends EventTarget {
     if (!config.url) {
       throw new Error("Must specify endpoint url in config");
     }
-    this.endpointUrl = config.url;
+    this.endpointUrl = new URL(config.url, document.location.href);
 
     this.client.addEventListener('icecandidate', (event) => this.handleIceCandidateFromClient(event));
     this.client.addEventListener('iceconnectionstatechange', (event) => this.handleIceConnectionChange(event));
@@ -69,7 +69,7 @@ export class WebRtcClient extends EventTarget {
     if (sessionUrl == null) {
       throw new Error("Session not provided in Location header");
     }
-    this.sessionUrl = sessionUrl;
+    this.sessionUrl = new URL(sessionUrl, this.endpointUrl);
 
     const remoteOffer = await response.text();
     console.log("Got response", { remoteOffer, sessionUrl });
@@ -181,7 +181,6 @@ export class WebRtcClient extends EventTarget {
 
   }
 
-  // TODO don't actually manip dom here
   async onResponseError(response: Response) {
     this.raise('responseerror', new CustomEvent('responseerror', { detail: response }));
   }
