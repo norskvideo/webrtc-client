@@ -48,7 +48,9 @@ export class WebRtcClient extends EventTarget {
   async sendOffer() {
     const client = this.client;
     const localOffer = await client.createOffer();
-    await client.setLocalDescription(localOffer);
+
+    // Previously set local description here, starting ICE candidate gathering earlier.
+    // Could potentially still do this when ICE servers are explicitly configured.
 
     console.debug("received local offer, sending to server", localOffer);
 
@@ -74,6 +76,9 @@ export class WebRtcClient extends EventTarget {
     const remoteOffer = await response.text();
     console.log("Got response", { remoteOffer, sessionUrl });
 
+    // Set local description after configuring ICE servers returned in Link header
+    await client.setLocalDescription(localOffer);
+
     const remoteResponse = await client.setRemoteDescription({
       type: "answer",
       sdp: remoteOffer,
@@ -82,6 +87,7 @@ export class WebRtcClient extends EventTarget {
     console.log("Applied remote description", remoteResponse);
     console.log("Peer connection state", client);
 
+    // Currently there should be no cached candidates
     this.sendCachedCandidates();
   }
 
