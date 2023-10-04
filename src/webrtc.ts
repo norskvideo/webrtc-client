@@ -76,6 +76,16 @@ export class WebRtcClient extends EventTarget {
     const remoteOffer = await response.text();
     console.log("Got response", { remoteOffer, sessionUrl });
 
+    // Note these matches are single line mode so just grabbing the rest of the relevant lines in the sdp
+    let multiOpus = remoteOffer.match("multiopus/.*");
+    let fecOpus = remoteOffer.match("useinbandfec.*");
+    // Munge multiopus support into our offer (Chrome only? TBD)
+    // This might not work but if it doesn't the result will also be terrible.
+    if (multiOpus && fecOpus) {
+      console.log("Munging SDP for multiopus support");
+      localOffer.sdp = localOffer.sdp?.replace(/opus\/.*/, multiOpus[0]).replace(/useinbandfec=1.*/, fecOpus[0]);
+    }
+
     // Set local description after configuring ICE servers returned in Link header
     await client.setLocalDescription(localOffer);
 
