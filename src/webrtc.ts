@@ -197,6 +197,16 @@ export class WebRtcClient extends EventTarget {
 
   }
 
+  // Close the session by request to the server
+  async closeSession() {
+    if (!this.sessionUrl) { return; }
+    await fetch(this.sessionUrl, {
+      method: "DELETE"
+    });
+    this.sessionUrl = undefined;
+    this.client.close();
+  }
+
   async onResponseError(response: Response) {
     this.raise('responseerror', new CustomEvent('responseerror', { detail: response }));
   }
@@ -209,7 +219,7 @@ export class WebRtcClient extends EventTarget {
   public addEventListener<K extends keyof WebRtcClientEventMap>(type: K, listener: (this: WebRtcClient, ev: WebRtcClientEventMap[K]) => any, options?: boolean | AddEventListenerOptions) {
     super.addEventListener(type, listener as any);
   }
-  
+
   public removeEventListener<K extends keyof WebRtcClientEventMap>(type: K, listener: (this: WebRtcClient, ev: WebRtcClientEventMap[K]) => any, options?: boolean | EventListenerOptions): void
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
   public removeEventListener<K extends keyof WebRtcClientEventMap>(type: K, listener: (this: WebRtcClient, ev: WebRtcClientEventMap[K]) => any, options?: boolean | EventListenerOptions) {
