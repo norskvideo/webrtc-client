@@ -240,6 +240,9 @@ export class WhepClient extends WebRtcClient {
   container?: HTMLElement
   simulcastVideoCount: number;
   started: boolean = false;
+  gotAudio: boolean = false;
+  gotVideo: boolean = false;
+
 
   constructor(config: WhepClientConfig) {
     super(config);
@@ -265,20 +268,30 @@ export class WhepClient extends WebRtcClient {
 
   async handleGotTrack(ev: RTCTrackEvent) {
     console.log("Got a track", ev);
-    // Why do we have 'empty' tracks when a stream is live but non-empty when not
-    if (ev.track.kind == 'video' && ev.streams.length > 0) {
-      this.outputVideoTracks.push(ev.track);
+    if (ev.track.kind == 'video') {
+      this.gotVideo = true;
+      if (ev.streams.length > 0) {
+        this.outputVideoTracks.push(ev.track);
+      }
     }
     if (ev.track.kind == 'audio') {
-      this.outputAudioTrack = ev.track;
+      this.gotAudio = true;
+      if (ev.streams.length > 0) {
+        this.outputAudioTrack = ev.track;
+      }
     }
 
-    if (this.outputAudioTrack && this.outputVideoTracks.length > this.videoElements.length) {
-      for (let i = 0; i < this.outputVideoTracks.length; i++) {
+    // For WHEP only 1 audio and 1 video (but may be empty tracks if there is no content served)
+    if (!this.gotAudio || !this.gotVideo) {
+      return;
+    }
+
+    if (this.outputVideoTracks.length > this.videoElements.length || (this.outputAudioTrack && this.outputVideoTracks.length === 0 && this.videoElements.length === 0)) {
+      for (let i = 0; i < Math.max(1, this.outputVideoTracks.length); i++) {
         if (this.videoElements[i]) continue;
         let stream = undefined;
         if (i == 0) {
-          stream = new MediaStream([this.outputAudioTrack, this.outputVideoTracks[i]]);
+          stream = new MediaStream([this.outputAudioTrack, this.outputVideoTracks[i]].filter((v): v is Exclude<typeof v, undefined> => v !== undefined));
         } else {
           stream = new MediaStream([this.outputVideoTracks[i]]);
         }
