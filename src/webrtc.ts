@@ -239,6 +239,7 @@ export class WhepClient extends WebRtcClient {
   videoElements: HTMLVideoElement[] = [];
   container?: HTMLElement
   simulcastVideoCount: number;
+  started: boolean = false;
 
   constructor(config: WhepClientConfig) {
     super(config);
@@ -247,6 +248,11 @@ export class WhepClient extends WebRtcClient {
   }
 
   async start() {
+    if (this.started) {
+      throw new Error("WhepClient does not support re-use, create a fresh client to reconnect");
+    }
+    this.started = true;
+
     const client = this.client;
 
     for (let _ of Array(this.simulcastVideoCount)) {
@@ -289,6 +295,7 @@ export type WhipClientConfig = WebRtcClientConfig;
 
 export class WhipClient extends WebRtcClient {
   media: MediaStream | undefined;
+  started: boolean = false;
 
   constructor(config: WhipClientConfig) {
     super(config);
@@ -306,6 +313,12 @@ export class WhipClient extends WebRtcClient {
         return false;
       }
     }
+
+    if (this.started) {
+      throw new Error("WhipClient does not support re-use, create a fresh client to reconnect");
+    }
+    this.started = true;
+
     const client = this.client;
 
     for (const track of this.media.getTracks()) {
@@ -327,7 +340,7 @@ export class DuplexClient extends WebRtcClient {
   videoElements: HTMLVideoElement[] = [];
   container: HTMLElement | null
   simulcastVideoCount: number;
-
+  started: boolean = false;
 
   constructor(config: DuplexClientConfig) {
     super(config);
@@ -343,6 +356,12 @@ export class DuplexClient extends WebRtcClient {
     if (this.media === undefined) {
       await this.requestAccess();
     }
+
+    if (this.started) {
+      throw new Error("DuplexClient does not support re-use, create a fresh client to reconnect");
+    }
+    this.started = true;
+
 
     const client = this.client;
 
