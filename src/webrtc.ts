@@ -199,11 +199,12 @@ export class WebRtcClient extends EventTarget {
 
   // Close the session by request to the server
   async closeSession() {
-    if (!this.sessionUrl) { return; }
-    await fetch(this.sessionUrl, {
+    const sessionUrl = this.sessionUrl;
+    this.sessionUrl = undefined
+    if (!sessionUrl) { return; }
+    await fetch(sessionUrl, {
       method: "DELETE"
     });
-    this.sessionUrl = undefined;
     this.client.close();
   }
 
