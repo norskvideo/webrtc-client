@@ -1,0 +1,51 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      new-version:
+        description: 'Version bump'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Bump, commit and tag (e.g. "0.3.0" / v0.3.0) before publishing, so the published
+      # version matches the tagged commit.
+      - name: Version bump
+        run: |
+          git config --global user.email "jankings@id3as.co.uk"
+          git config --global user.name "Jankings"
+          npm version ${{ inputs.new-version }}
+          git push --follow-tags
+
+      - run: npm run build
+
+      - name: Publish
+        uses: JS-DevTools/npm-publish@v3
+        with:
+          access: public
+          token: ${{ secrets.NPM_TOKEN }}
