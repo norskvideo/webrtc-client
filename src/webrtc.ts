@@ -5,11 +5,23 @@ export type WebRtcClientConfig = {
 interface WebRtcClientEventMap {
   "responseerror": CustomEvent<Response>;
 }
+
+// The server rejected the offer; start() rejects with this (after the "responseerror" event).
+export class ResponseError extends Error {
+  constructor(public response: Response) {
+    super(`Server rejected offer: ${response.status} ${response.statusText}`);
+    this.name = "ResponseError";
+  }
+}
+
 export class WebRtcClient extends EventTarget {
   cachedCandidates: RTCIceCandidate[] = [];
   endpointUrl: URL;
   sessionUrl: URL | undefined;
   client: RTCPeerConnection;
+  // Set by closeSession(); a closed client takes no further part in negotiation.
+  closed: boolean = false;
+  private abortController = new AbortController();
 
   constructor(config: WebRtcClientConfig) {
     super();
@@ -31,6 +43,9 @@ export class WebRtcClient extends EventTarget {
   }
 
   async handleIceCandidateFromClient(event: RTCPeerConnectionIceEvent) {
+    if (this.closed) {
+      return;
+    }
     if (!event.candidate || !event.candidate.candidate) {
       console.log("client ice candidate gathering is done", event);
       return;
@@ -45,9 +60,25 @@ export class WebRtcClient extends EventTarget {
     await this.sendCandidate(event.candidate, false);
   }
 
+  // Resolves once the answer is applied, or early if the client is closed meanwhile; rejects if
+  // negotiation fails (ResponseError when the server rejects the offer).
   async sendOffer() {
+    try {
+      await this.negotiate();
+    } catch (e) {
+      // Closing aborts the request / invalidates the peer connection under us: not a failure
+      if (!this.closed) {
+        throw e;
+      }
+    }
+  }
+
+  private async negotiate() {
     const client = this.client;
     const localOffer = await client.createOffer();
+    if (this.closed) {
+      return;
+    }
 
     // Previously set local description here, starting ICE candidate gathering earlier.
     // Could potentially still do this when ICE servers are explicitly configured.
@@ -59,21 +90,32 @@ export class WebRtcClient extends EventTarget {
       headers: {
         "Content-Type": "application/sdp"
       },
-      body: localOffer.sdp
+      body: localOffer.sdp,
+      signal: this.abortController.signal
     });
 
-    if (!response.ok) {
-      this.onResponseError(response);
+    const sessionUrl = response.headers.get("Location");
+    if (this.closed) {
+      // Closed while the offer was in flight, but the server accepted it: end that session too
+      if (response.ok && sessionUrl != null) {
+        await fetch(new URL(sessionUrl, this.endpointUrl), { method: "DELETE" });
+      }
       return;
     }
+    if (!response.ok) {
+      this.onResponseError(response);
+      throw new ResponseError(response);
+    }
     this.receiveIceServers(response.headers);
-    const sessionUrl = response.headers.get("Location");
     if (sessionUrl == null) {
       throw new Error("Session not provided in Location header");
     }
     this.sessionUrl = new URL(sessionUrl, this.endpointUrl);
 
     const remoteOffer = await response.text();
+    if (this.closed) {
+      return;
+    }
     console.log("Got response", { remoteOffer, sessionUrl });
 
     // Note these matches are single line mode so just grabbing the rest of the relevant lines in the sdp
@@ -88,6 +130,9 @@ export class WebRtcClient extends EventTarget {
 
     // Set local description after configuring ICE servers returned in Link header
     await client.setLocalDescription(localOffer);
+    if (this.closed) {
+      return;
+    }
 
     const remoteResponse = await client.setRemoteDescription({
       type: "answer",
@@ -102,6 +147,9 @@ export class WebRtcClient extends EventTarget {
   }
 
   async sendCandidate(candidate: RTCIceCandidate, isCached: boolean) {
+    if (this.closed) {
+      return;
+    }
     if (isCached) {
       console.log("sending cached client ice candidate", candidate);
     }
@@ -122,17 +170,25 @@ export class WebRtcClient extends EventTarget {
     // Again without parsing the original offer SDP, it is impossible to know this
     // The spec says that this is fine and simply 'what you do'
     // Hilariously enough, the webrtc.rs stuff is going to ignore all the values here except the candidate line anyway so *shrug*
-    await fetch(this.sessionUrl, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/trickle-ice-sdpfrag"
-      },
-      body: ["m=audio 9 RTP/AVP 0", // a lie (and everything after the first 0 is ignored, and we only have the second 100 because the sdp parser in webrtc.rs is wrong)
-        "a=ice-ufrag:" + candidate.usernameFragment,
-        "a=mid:" + candidate.sdpMid, // the only actually important bit
-        "a=" + candidate.candidate // and the candidate itself
-      ].join('\r\n')
-    });
+    try {
+      await fetch(this.sessionUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/trickle-ice-sdpfrag"
+        },
+        body: ["m=audio 9 RTP/AVP 0", // a lie (and everything after the first 0 is ignored, and we only have the second 100 because the sdp parser in webrtc.rs is wrong)
+          "a=ice-ufrag:" + candidate.usernameFragment,
+          "a=mid:" + candidate.sdpMid, // the only actually important bit
+          "a=" + candidate.candidate // and the candidate itself
+        ].join('\r\n'),
+        signal: this.abortController.signal
+      });
+    } catch (e) {
+      // Aborted by closeSession()
+      if (!this.closed) {
+        throw e;
+      }
+    }
   }
 
   async sendCachedCandidates() {
@@ -197,15 +253,20 @@ export class WebRtcClient extends EventTarget {
 
   }
 
-  // Close the session by request to the server
+  // Close the client at any point: abandons a negotiation in flight, closes the peer connection
+  // and asks the server to end the session (also one whose offer was answered after closing).
   async closeSession() {
+    if (!this.closed) {
+      this.closed = true;
+      this.abortController.abort();
+      this.client.close();
+    }
     const sessionUrl = this.sessionUrl;
     this.sessionUrl = undefined
     if (!sessionUrl) { return; }
     await fetch(sessionUrl, {
       method: "DELETE"
     });
-    this.client.close();
   }
 
   async onResponseError(response: Response) {
@@ -264,7 +325,7 @@ export class WhepClient extends WebRtcClient {
     }
     client.addTransceiver('audio', { 'direction': 'recvonly' });
 
-    this.sendOffer();
+    await this.sendOffer();
   }
 
   async handleGotTrack(ev: RTCTrackEvent) {
@@ -391,7 +452,7 @@ export class DuplexClient extends WebRtcClient {
       }
     }
 
-    this.sendOffer();
+    await this.sendOffer();
   }
 
   // This is just like WHEP I just don't want to do a mixin or whatever
