@@ -14,5 +14,7 @@
     "strictNullChecks": true,
     "target": "es6",
     "declaration": true,
+    // Browser library: don't pick up @types/node (a dev dependency for the tests)
+    "types": [],
   }
 }
